@@ -1,0 +1,5 @@
+{
+  "name": "muro-distribucion",
+  "private": true,
+  "description": "Solo para subir el APK a EAS con eas upload. La app real está en ../app."
+}

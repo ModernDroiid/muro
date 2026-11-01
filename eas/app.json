@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "Muro",
+    "slug": "muro",
+    "version": "1.0.0",
+    "android": {
+      "package": "app.muro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "9f3b8e51-0ccc-471d-9065-896dba30bdb2"
+      }
+    }
+  }
+}

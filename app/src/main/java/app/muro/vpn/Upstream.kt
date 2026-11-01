@@ -1,35 +1,38 @@
 package app.muro.vpn
 
 import android.util.Log
+import app.muro.vpn.DnsCodec.isResponseTo
 import okhttp3.Dns
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
-import java.net.DatagramPacket
-import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 /**
- * Reenvía consultas a AdGuard cifradas (DNS sobre HTTPS) y usa el DNS de respaldo si
- * falla. Muro no está en la lista de apps de la VPN, así que este tráfico sale directo
- * a la red real y no vuelve a entrar al túnel.
+ * Reenvía consultas a AdGuard cifradas (DNS sobre HTTPS). Si no responde usa el DNS de
+ * respaldo, también cifrado: nunca se cae a DNS en texto plano, porque cualquiera en la
+ * misma red podría forzar ese modo bloqueando AdGuard y leer qué dominios se consultan.
+ *
+ * Muro no está en la lista de apps de la VPN, así que este tráfico sale directo a la red
+ * real y no vuelve a entrar al túnel.
  */
 class Upstream(
     private val filteredUrl: String = ADGUARD_FILTERED,
     private val unfilteredUrl: String = ADGUARD_UNFILTERED,
+    private val backupUrl: (String) -> String = ::backupDohUrl,
 ) : Resolver {
     @Volatile
     var backupDns: String = "1.1.1.1"
 
+    // El resolvedor del sistema se rinde en unos 5 s: los dos intentos deben caber ahí.
     private val client = OkHttpClient.Builder()
         .dns(BootstrapDns)
-        .connectTimeout(3, TimeUnit.SECONDS)
-        .readTimeout(4, TimeUnit.SECONDS)
-        .callTimeout(5, TimeUnit.SECONDS)
+        .connectTimeout(2_500, TimeUnit.MILLISECONDS)
+        .callTimeout(3_500, TimeUnit.MILLISECONDS)
         .build()
 
     override fun resolve(query: ByteArray, filtered: Boolean): ByteArray? {
@@ -37,9 +40,9 @@ class Upstream(
         return try {
             overHttps(url, query)
         } catch (e: IOException) {
-            Log.w(TAG, "DoH falló, usando el DNS de respaldo: ${e.message}")
+            Log.w(TAG, "AdGuard falló, usando el DNS de respaldo: ${e.message}")
             try {
-                overUdp(backupDns, query)
+                overHttps(backupUrl(backupDns), query)
             } catch (e: IOException) {
                 Log.w(TAG, "El DNS de respaldo también falló: ${e.message}")
                 null
@@ -55,22 +58,9 @@ class Upstream(
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
-            return response.body?.bytes()?.takeIf { it.size >= DNS_HEADER }
-                ?: throw IOException("Respuesta vacía")
-        }
-    }
-
-    private fun overUdp(server: String, query: ByteArray): ByteArray {
-        DatagramSocket().use { socket ->
-            socket.soTimeout = 2_500
-            socket.send(DatagramPacket(query, query.size, InetAddress.getByName(server), 53))
-            val buffer = ByteArray(Tunnel.MAX_DNS_PAYLOAD)
-            val packet = DatagramPacket(buffer, buffer.size)
-            socket.receive(packet)
-            if (packet.length < DNS_HEADER || buffer[0] != query[0] || buffer[1] != query[1]) {
-                throw IOException("Respuesta inválida")
-            }
-            return buffer.copyOf(packet.length)
+            val body = response.body?.bytes() ?: throw IOException("Respuesta vacía")
+            if (!isResponseTo(query, body)) throw IOException("La respuesta no corresponde a la consulta")
+            return body
         }
     }
 
@@ -92,7 +82,12 @@ class Upstream(
         const val TAG = "MuroUpstream"
         const val ADGUARD_FILTERED = "https://dns.adguard-dns.com/dns-query"
         const val ADGUARD_UNFILTERED = "https://unfiltered.adguard-dns.com/dns-query"
-        const val DNS_HEADER = 12
         val DNS_MESSAGE = "application/dns-message".toMediaType()
     }
+}
+
+/** Dirección DNS sobre HTTPS de un servidor guardado como IP. */
+internal fun backupDohUrl(server: String): String {
+    val host = if (':' in server) "[$server]" else server
+    return "https://$host/dns-query"
 }

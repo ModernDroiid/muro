@@ -25,6 +25,17 @@ object DnsCodec {
         null
     }
 
+    /** Exige mismo ID, bandera de respuesta y la misma pregunta que se hizo. */
+    fun isResponseTo(query: ByteArray, response: ByteArray): Boolean = try {
+        val asked = Message(query)
+        val got = Message(response)
+        got.header.id == asked.header.id &&
+            got.header.getFlag(Flags.QR.toInt()) &&
+            got.question == asked.question
+    } catch (_: IOException) {
+        false
+    }
+
     fun hasAnswers(response: ByteArray): Boolean = try {
         Message(response).getSection(Section.ANSWER).isNotEmpty()
     } catch (_: IOException) {

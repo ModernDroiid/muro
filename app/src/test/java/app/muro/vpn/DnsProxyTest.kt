@@ -3,6 +3,7 @@ package app.muro.vpn
 import app.muro.data.LogEntry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -170,6 +171,29 @@ class DnsProxyTest {
         val reply = Message(proxy.answer(query("ejemplo.com"))!!)
 
         assertEquals(Rcode.SERVFAIL, reply.header.rcode)
+    }
+
+    @Test
+    fun `una excepcion en una consulta no detiene las siguientes`() {
+        val job = SupervisorJob()
+        val replies = mutableListOf<ByteArray>()
+        var fail = true
+        val isolated = DnsProxy(
+            scope = CoroutineScope(job + Dispatchers.Unconfined),
+            resolver = { query, _ -> answerFor(query, "93.184.216.34") },
+            appOf = {
+                if (fail) error("fallo inesperado")
+                null
+            },
+            log = {},
+        )
+
+        isolated.submit(query("uno.ejemplo.com")) { replies += it }
+        fail = false
+        isolated.submit(query("dos.ejemplo.com")) { replies += it }
+
+        assertTrue(job.isActive)
+        assertEquals(1, replies.size)
     }
 
     @Test

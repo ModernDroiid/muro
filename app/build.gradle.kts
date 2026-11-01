@@ -42,6 +42,11 @@ android {
         compose = true
     }
 
+    testOptions {
+        // android.util.Log no existe en la JVM; en las pruebas no hace nada.
+        unitTests.isReturnDefaultValues = true
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -73,6 +78,7 @@ dependencies {
     implementation(libs.dnsjava)
 
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)

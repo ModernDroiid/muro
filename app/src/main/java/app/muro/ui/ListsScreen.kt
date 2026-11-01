@@ -322,7 +322,8 @@ private fun BackupDnsDialog(current: String, onSave: (String) -> Unit, onDismiss
         text = {
             Column {
                 Text(
-                    "Se usa solo si AdGuard no responde. Va sin cifrar y sin filtro de AdGuard.",
+                    "Se usa solo si AdGuard no responde. Va cifrado, sin el filtro de AdGuard, y " +
+                        "debe aceptar DNS sobre HTTPS, como 1.1.1.1 u 8.8.8.8.",
                     style = MuroText.Body,
                     color = MuroColors.Muted,
                 )

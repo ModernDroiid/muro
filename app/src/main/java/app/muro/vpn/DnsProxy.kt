@@ -1,6 +1,8 @@
 package app.muro.vpn
 
+import android.util.Log
 import app.muro.data.LogEntry
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -24,7 +26,15 @@ class DnsProxy(
 
     fun submit(query: UdpDatagram, reply: (ByteArray) -> Unit) {
         scope.launch {
-            answer(query)?.let { reply(Ipv4Udp.buildReply(query, it)) }
+            // Los bytes vienen de otras apps y de la red: un mensaje raro se descarta y el
+            // sistema reintenta, pero nunca debe llegar a detener la protección.
+            try {
+                answer(query)?.let { reply(Ipv4Udp.buildReply(query, it)) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Consulta descartada: $e")
+            }
         }
     }
 
@@ -62,5 +72,9 @@ class DnsProxy(
             log(LogEntry(0, clock(), question.domain, app?.packageName, app?.label, blocked))
         }
         return response
+    }
+
+    private companion object {
+        const val TAG = "MuroProxy"
     }
 }

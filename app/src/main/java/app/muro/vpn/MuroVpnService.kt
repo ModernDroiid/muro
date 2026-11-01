@@ -111,8 +111,11 @@ class MuroVpnService : VpnService() {
         val owners = AppResolver(this@MuroVpnService) { selected }
         val proxy = DnsProxy(
             // Una consulta lenta espera a la red, así que cada una necesita su hilo; el
-            // límite evita que una ráfaga dispare cientos.
-            scope = CoroutineScope(coroutineContext + Dispatchers.IO.limitedParallelism(32)),
+            // límite evita que una ráfaga dispare cientos. El supervisor aísla cada consulta
+            // para que un fallo en una no cancele el servicio entero.
+            scope = CoroutineScope(
+                coroutineContext + SupervisorJob(coroutineContext[Job]) + Dispatchers.IO.limitedParallelism(32),
+            ),
             resolver = upstream,
             appOf = owners::resolve,
             log = logger::record,
